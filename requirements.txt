@@ -1,0 +1,8 @@
+Flask
+opencv-python
+Pillow
+numpy
+Werkzeug
+plyer
+tkinter
+threading

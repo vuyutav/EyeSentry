@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>EyeSentry - Deteksi Kantuk Siswa</title>
+    <style>
+        body { 
+            background-color: #0f172a; 
+            color: white; 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            padding: 20px; 
+            margin: 0;
+        }
+        h1 { color: #38bdf8; }
+        .video-box { 
+            border: 4px solid #38bdf8; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            display: inline-block; 
+            margin-top: 15px; 
+        }
+        img { width: 640px; height: 480px; display: block; }
+        .btn-audio { 
+            background-color: #0284c7; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 15px; 
+            font-weight: bold; 
+            margin-bottom: 15px; 
+        }
+        .btn-audio:hover { background-color: #0369a1; }
+
+        /* ----- STYLE FITUR 1: LAYAR PENUH (FULLSCREEN) ISTIRAHAT ----- */
+        #rest-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(15, 23, 42, 0.95);
+            color: white;
+            display: none; /* Sembunyikan secara default */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            text-align: center;
+        }
+        #rest-screen h2 {
+            font-size: 3rem;
+            color: #38bdf8;
+            margin-bottom: 10px;
+        }
+        #rest-screen p {
+            font-size: 1.5rem;
+            color: #cbd5e1;
+        }
+        #countdown-timer {
+            font-size: 5rem;
+            font-weight: bold;
+            color: #fACC15;
+            margin: 20px 0;
+        }
+
+        /* ----- STYLE FITUR 2: KOTAK POP-UP PERINGATAN JARAK DI TENGAH ----- */
+        #distance-popup {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #f97316; /* Warna Oranye */
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            display: none; /* Sembunyikan secara default */
+            z-index: 8888;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>EyeSentry</h1>
+    <p>Pemantau Real-Time Fokus</p>
+    
+    <!-- KOTAK POP-UP PERINGATAN JARAK (OTOMATIS MUNCUL/HILANG) -->
+    <div id="distance-popup">PERINGATAN: Posisi Anda terlalu dekat dengan layar! Harap jaga jarak.</div>
+
+    <div>
+        <button class="btn-audio" onclick="aktifkanAudio()">🔊 Aktifkan Suara</button>
+    </div>
+
+    <!-- KOTAK VIDEO KAMERA (DIKEMBALIKAN) -->
+    <div class="video-box">
+        <img src="{{ url_for('video_feed') }}" alt="Kamera Web">
+    </div>
+
+    <!-- LAYAR PENUH (FULLSCREEN) UNTUK MODE ISTIRAHAT -->
+    <div id="rest-screen">
+        <h2> Waktunya Istirahat Sejenak!</h2>
+        <p>Istirahatkan mata Anda dari layar laptop untuk menjaga kesehatan penglihatan.</p>
+        <div id="countdown-timer">120s</div>
+        <p>Aplikasi akan kembali otomatis setelah waktu istirahat selesai.</p>
+    </div>
+
+    <script>
+        let audioCtx = null;
+        let oscillator = null;
+        let audioAllowed = false;
+
+        function aktifkanAudio() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioAllowed = true;
+            alert('Suara Sistem Berhasil Diaktifkan!');
+        }
+
+        function playAlarm() {
+            if (!audioCtx || oscillator) return;
+            oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(900, audioCtx.currentTime); 
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.start();
+        }
+
+        function stopAlarm() {
+            if (oscillator) {
+                oscillator.stop();
+                oscillator.disconnect();
+                oscillator = null;
+            }
+        }
+
+        // Pengecekan status secara berkala ke backend Flask (/status)
+        setInterval(() => {
+            fetch('/status')
+                .then(res => res.json())
+                .then(data => {
+                    const restScreen = document.getElementById('rest-screen');
+                    const distancePopup = document.getElementById('distance-popup');
+                    const countdownTimer = document.getElementById('countdown-timer');
+
+                    // 1. Kontrol Alarm Kantuk
+                    if (data.drowsy && audioAllowed) {
+                        playAlarm();
+                    } else {
+                        stopAlarm();
+                    }
+
+                    // 2. Kontrol Fitur 1: Layar Penuh Istirahat & Hitung Mundur
+                    if (data.resting) {
+                        restScreen.style.display = 'flex';
+                        countdownTimer.innerText = data.remaining_rest + 's';
+                    } else {
+                        restScreen.style.display = 'none';
+                    }
+
+                    // 3. Kontrol Fitur 2: Pop-up Jarak Terlalu Dekat (Muncul/Hilang Otomatis)
+                    if (data.too_close) {
+                        distancePopup.style.display = 'block';
+                    } else {
+                        distancePopup.style.display = 'none';
+                    }
+                })
+                .catch(err => console.log(err));
+        }, 500);
+    </script>
+</body>
+</html>
